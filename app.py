@@ -1,74 +1,48 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # ✅ เพิ่มบรรทัดนี้
 import joblib
 import numpy as np
-import datetime
 
 app = Flask(__name__)
+CORS(app)  # ✅ เปิดให้ทุก origin เข้าถึง API ได้
+# หรือถ้าจะจำกัดเฉพาะ frontend ของคุณ
+# CORS(app, origins=["https://carfront-iota.vercel.app"])
 
 # โหลดโมเดลและ scaler
 model = joblib.load('best_car_price_model.pkl')
 scaler = joblib.load('scaler.pkl')
 
-# ✅ รายการ feature ที่โมเดลใช้
-FEATURES = ['milage_km', 'car_age', 
-    'brand_Toyota', 'brand_Honda', 'brand_Mazda', 'brand_Nissan', 'brand_Mitsubishi',
-    'fuel_type_Gasoline', 'fuel_type_Hybrid', 'fuel_type_Electric', 'fuel_type_Diesel'
-]
-
 @app.route('/')
 def home():
-    return "🚗 Car Price Prediction API is running!"
+    return "🚗 Car Price Prediction API is running with CORS enabled!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
+        mileage = float(data.get("mileage", 0))
+        car_age = float(data.get("car_age", 0))
+        brand = data.get("brand", "")
+        model_name = data.get("model", "")
+        fuel = data.get("fuel", "")
 
-        brand = data.get('brand')
-        model_name = data.get('model')
-        year = int(data.get('year'))
-        milage = float(data.get('milage'))
-        fuel = data.get('fuel')
+        brands = ["Toyota", "Honda", "Mazda", "Nissan"]
+        models = ["Vios", "Camry", "Altis", "Civic", "City", "Accord", "Mazda2", "Mazda3", "CX-5", "Almera", "Navara", "Teana"]
+        fuels = ["Gasoline", "Diesel", "Hybrid", "EV"]
 
-        # 🔹 คำนวณอายุรถ
-        current_year = datetime.datetime.now().year
-        car_age = current_year - year
+        brand_encoded = [1 if brand == b else 0 for b in brands]
+        model_encoded = [1 if model_name == m else 0 for m in models]
+        fuel_encoded = [1 if fuel == f else 0 for f in fuels]
 
-        # 🔹 เตรียม one-hot encoding ให้ตรงกับโมเดล
-        input_dict = {col: 0 for col in FEATURES}
-        input_dict['milage_km'] = milage
-        input_dict['car_age'] = car_age
+        features = [mileage, car_age] + brand_encoded + model_encoded + fuel_encoded
+        input_scaled = scaler.transform([features])
+        prediction = model.predict(input_scaled)
+        price = round(prediction[0], 2)
 
-        # Brand
-        brand_col = f"brand_{brand}"
-        if brand_col in input_dict:
-            input_dict[brand_col] = 1
-
-        # Fuel
-        fuel_col = f"fuel_type_{fuel}"
-        if fuel_col in input_dict:
-            input_dict[fuel_col] = 1
-
-        # 🔹 แปลงเป็น array
-        input_array = np.array([input_dict[col] for col in FEATURES]).reshape(1, -1)
-
-        # scale ข้อมูล
-        input_scaled = scaler.transform(input_array)
-
-        # 🔹 ทำนาย
-        predicted_price = model.predict(input_scaled)[0]
-        price_thb = round(predicted_price, 2)
-
-        return jsonify({
-            "predicted_price_thb": price_thb,
-            "brand": brand,
-            "model": model_name,
-            "year": year,
-            "fuel": fuel
-        })
+        return jsonify({'predicted_price_thb': price})
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
