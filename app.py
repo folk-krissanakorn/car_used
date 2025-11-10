@@ -1,12 +1,10 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # ✅ เพิ่มบรรทัดนี้
+from flask_cors import CORS
 import joblib
 import numpy as np
 
 app = Flask(__name__)
-CORS(app)  # ✅ เปิดให้ทุก origin เข้าถึง API ได้
-# หรือถ้าจะจำกัดเฉพาะ frontend ของคุณ
-# CORS(app, origins=["https://carfront-iota.vercel.app"])
+CORS(app, origins=["https://carfront-iota.vercel.app", "*"])  # ✅ รองรับ CORS
 
 # โหลดโมเดลและ scaler
 model = joblib.load('best_car_price_model.pkl')
@@ -14,28 +12,27 @@ scaler = joblib.load('scaler.pkl')
 
 @app.route('/')
 def home():
-    return "🚗 Car Price Prediction API is running with CORS enabled!"
+    return "🚗 Car Price Prediction API is running!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
-        mileage = float(data.get("mileage", 0))
-        car_age = float(data.get("car_age", 0))
-        brand = data.get("brand", "")
-        model_name = data.get("model", "")
-        fuel = data.get("fuel", "")
+        brand = data.get('brand')
+        model_name = data.get('model')
+        year = int(data.get('year'))
+        milage = float(data.get('milage'))
+        fuel = data.get('fuel')
 
-        brands = ["Toyota", "Honda", "Mazda", "Nissan"]
-        models = ["Vios", "Camry", "Altis", "Civic", "City", "Accord", "Mazda2", "Mazda3", "CX-5", "Almera", "Navara", "Teana"]
-        fuels = ["Gasoline", "Diesel", "Hybrid", "EV"]
+        # ✅ ตัวอย่างการแปลงข้อมูล (คุณสามารถแก้ให้ตรงกับโมเดลของคุณได้)
+        car_age = 2025 - year
 
-        brand_encoded = [1 if brand == b else 0 for b in brands]
-        model_encoded = [1 if model_name == m else 0 for m in models]
-        fuel_encoded = [1 if fuel == f else 0 for f in fuels]
+        # ตัวอย่าง features (ปรับตามโมเดลจริง)
+        # สมมติว่าคุณ train ด้วย [milage, car_age]
+        features = np.array([[milage, car_age]])
+        input_scaled = scaler.transform(features)
 
-        features = [mileage, car_age] + brand_encoded + model_encoded + fuel_encoded
-        input_scaled = scaler.transform([features])
+        # ทำนายราคา
         prediction = model.predict(input_scaled)
         price = round(prediction[0], 2)
 
